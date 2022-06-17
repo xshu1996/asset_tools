@@ -1,0 +1,22 @@
+{
+  "name": "asset_tools",
+  "version": "1.0.0",
+  "description": "Game resources check, batch operation tools collection.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xshu1996/asset_tools.git"
+  },
+  "author": "xshu",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/xshu1996/asset_tools/issues"
+  },
+  "homepage": "https://github.com/xshu1996/asset_tools#readme",
+  "dependencies": {
+    "excel4node": "^1.7.2"
+  }
+}
