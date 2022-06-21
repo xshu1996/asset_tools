@@ -5,14 +5,21 @@ const images = require("images");
 
 const [, , dirPath, checkPath, ...comparePath] = process.argv.filter(t => !t.startsWith('-'));
 if (!dirPath) throw "missing set product path";
-
-const IGNORE_PATH = getIgnorePath();
-const OUTPUT_PATH = getOutputPath();
-// 路径需要到 ../laya
+// 默认忽略的文件夹
+const DEFAULT_IGNORE = [".history", ".vscode", ".laya", ".svn"];
+// 路径需要到 ..project_name
 const PRODUCT_PATH = path.resolve(dirPath);
+console.log(PRODUCT_PATH);
+// 忽略检查文件夹
+const IGNORE_PATH = getIgnorePath();
+console.log(IGNORE_PATH);
+// 输出目录 默认为 ./
+const OUTPUT_PATH = getOutputPath();
+// 是否输出图片到 excel
 const noImg = process.argv.indexOf("-noImg") > -1;
 
-const IMG_PATH_MAP = Object.create(null);
+const RES_PATH_MAP = Object.create(null);
+const UNLESS_RES_MAP = [];
 const MISSING_IMG_MAP = Object.create(null);
 const SIZE_MAP = Object.create(null);
 
@@ -25,9 +32,10 @@ function getIgnorePath()
     if (ignoreIdx > 0)
     {
         let ignoreParam = process.argv[ignoreIdx + 1];
+        console.log(ignoreParam)
         let ret = ignoreParam
             .split(",")
-            .filter(ele => !ele)
+            .filter(ele => ele)
             .reduce((pre, ele) =>
             {
                 pre[ele] = true;
@@ -55,35 +63,81 @@ function walkDir(p)
 {
     for (const f of fs.readdirSync(p))
     {
-        const nf = path.join(p, f);
-        if (fs.statSync(nf).isDirectory())
+        const fullPath = path.join(p, f);
+        const selfPath = fullPath.replace(PRODUCT_PATH, "");
+
+        if (IGNORE_PATH && IGNORE_PATH[fullPath])
         {
-            walkDir(nf);
+            continue;
+        }
+
+        if (DEFAULT_IGNORE.includes(path.basename(f)))
+        {
+            continue;
+        }
+
+        if (fs.statSync(fullPath).isDirectory())
+        {
+            if (selfPath == "\\bin") continue;
+            walkDir(fullPath);
         }
         else if (f.endsWith(".ui"))
         {
-            const data = fs.readFileSync(nf, { encoding: "utf8" });
-            const sf = nf.replace(PRODUCT_PATH, "");
+            const data = fs.readFileSync(fullPath, { encoding: "utf8" });
+            const sf = fullPath.replace(PRODUCT_PATH, "");
             process.stdout.write("scanning..." + sf + "             \r\n");
-            const reg = /"skin(\d{0,})":"([^,]+)"/g;
+            const skinReg = /"skin(\d{0,})":"([^,]+)"/g;
+            const srcReg = /("source":)"([^,]+)"/g;
             // TODO: source: 
-            const pageName = path.parse(nf).name;
-            if (reg.test(data))
+            const pageName = path.parse(fullPath).name;
+            if (skinReg.test(data))
             {
-                const imgUrl = RegExp.$2;
-                if (!IMG_PATH_MAP[imgUrl])
+                data.replace(skinReg, function (match, p1, p2)
                 {
-                    IMG_PATH_MAP[imgUrl] = {};
-                }
-                if (IMG_PATH_MAP[imgUrl][nf])
-                {
-                    IMG_PATH_MAP[imgUrl][nf]++;
-                }
-                else
-                {
-                    IMG_PATH_MAP[imgUrl][nf] = 1;
-                }
+                    const resUrl = p2;
+                    if (f.endsWith("ZhuchengMapInfo.ui"))
+                    {
+                        console.log(resUrl);
+                    }
+                    if (!RES_PATH_MAP[resUrl])
+                    {
+                        RES_PATH_MAP[resUrl] = {};
+                    }
+                    if (RES_PATH_MAP[resUrl][fullPath])
+                    {
+                        RES_PATH_MAP[resUrl][fullPath]++;
+                    }
+                    else
+                    {
+                        RES_PATH_MAP[resUrl][fullPath] = 1;
+                    }
+                });
             }
+            if (srcReg.test(data))
+            {
+
+                data.replace(srcReg, function (match, p1, p2)
+                {
+                    const resUrl = p2;
+                    if (!RES_PATH_MAP[resUrl])
+                    {
+                        RES_PATH_MAP[resUrl] = {};
+                    }
+                    if (RES_PATH_MAP[resUrl][fullPath])
+                    {
+                        RES_PATH_MAP[resUrl][fullPath]++;
+                    }
+                    else
+                    {
+                        RES_PATH_MAP[resUrl][fullPath] = 1;
+                    }
+                });
+
+            }
+        }
+        else if (_isImage(f))
+        {
+            UNLESS_RES_MAP.push(fullPath.replace(/\\/g, "/"));
         }
     }
 }
@@ -93,6 +147,11 @@ function _formatSize(size)
     let sign = Math.sign(size);
     size = Math.abs(size);
     return `${size > 1024 ? sign * (size / 1024).toFixed(2) + "KB" : sign * size + "B"}`;
+}
+
+function _isImage(file)
+{
+    return file.endsWith(".png") || file.endsWith(".jpg") || file.endsWith(".jpeg") || file.endsWith(".bmp");
 }
 
 function makeReport(target)
@@ -111,45 +170,53 @@ function makeReport(target)
         ws.cell(1, 1).string("目标路径");
         ws.cell(1, 2).string("目标类型");
         ws.cell(1, 3).string("使用次数");
-        ws.cell(1, 4).string("图片");
-        ws.cell(1, 5).string("使用的界面，包含次数");
-        ws.cell(1, 6).string("图片大小");
+        ws.cell(1, 4).string("使用的界面，包含次数");
+        ws.cell(1, 5).string("图片大小");
+        ws.cell(1, 6).string("图片");
 
         ws.column(1).setWidth(100);
         ws.column(2).setWidth(16);
         ws.column(3).setWidth(10);
-        ws.column(4).setWidth(30);
-        ws.column(5).setWidth(100);
-        ws.column(6).setWidth(30);
+        ws.column(4).setWidth(100);
+        ws.column(5).setWidth(30);
+        ws.column(6).setWidth(50);
 
         return ws;
     }
 
-    const ws = initWs();
+    const imgWs = initWs("Image");
+    const viewWs = initWs("UIView");
+
     const total = Object.keys(target).length;
     console.log("开始构建报表");
 
-
     let cursor = 0;
-    let row = 1;
+    const bookRow = { imgRow: 1, viewRow: 1, };
     for (let p of Object.keys(target))
     {
         cursor++;
-        // TODO: 判断是否属于白名单
         const type = p.endsWith(".ui") ? "UIView" : "Image";
         let prefix = p.endsWith(".ui") ? "pages" : "assets";
+        let ws = p.endsWith(".ui") ? viewWs : imgWs;
         const fullPath = path.resolve(PRODUCT_PATH, `laya/${prefix}`, p);
+
+        let url = fullPath.replace(/\\/g, "/");
+        if (UNLESS_RES_MAP.includes(url))
+        {
+            UNLESS_RES_MAP.splice(UNLESS_RES_MAP.indexOf(url), 1);
+        }
+
+        // TODO: 判断是否属于白名单
         if (!fs.existsSync(fullPath))
         {
             MISSING_IMG_MAP[fullPath] = true;
         }
         else
         {
-            const d = fs.readFileSync(fullPath, { encoding: "utf8" });
             const sf = fullPath.replace(PRODUCT_PATH, "");
             process.stdout.write(`progress: ${cursor}/${total}, path:${sf}\r\n`);
+            let row = p.endsWith(".ui") ? ++bookRow.viewRow : ++bookRow.imgRow;
 
-            row++;
             ws.cell(row, 1).string(fullPath);
             ws.cell(row, 2).string(type);
             ws.row(row).setHeight(50);
@@ -161,8 +228,8 @@ function makeReport(target)
                 usedPages += `${k.replace(path.join(PRODUCT_PATH, `laya/pages`), "")}| 使用次数：${target[p][k]}\r\n`;
             }
             ws.cell(row, 3).number(usedCnt);
+            ws.cell(row, 4).string(usedPages);
 
-            ws.cell(row, 5).string(usedPages);
             if (!noImg) 
             {
                 let img;
@@ -173,7 +240,7 @@ function makeReport(target)
                     ext = path.extname(fullPath);
                     const h = img.height();
                     const w = img.width();
-                    if (h > 30)
+                    if (h > 50)
                     {
                         if (w / h < 0.1)
                         {
@@ -185,7 +252,7 @@ function makeReport(target)
                     }
                     SIZE_MAP[p] = Buffer.byteLength(img.toBuffer(ext), "binary");
                     ;
-                    ws.cell(row, 6).string(`${_formatSize(+SIZE_MAP[p] || 0)}_${img.width()}x${img.height()}`);
+                    ws.cell(row, 5).string(`${_formatSize(+SIZE_MAP[p] || 0)}_${w}x${h}`);
                 }
                 img && ws.addImage({
                     image: img.toBuffer(ext),
@@ -193,7 +260,7 @@ function makeReport(target)
                     position: {
                         type: 'oneCellAnchor',
                         from: {
-                            col: 4,
+                            col: 6,
                             colOff: 0,
                             row,
                             rowOff: 0,
@@ -203,11 +270,67 @@ function makeReport(target)
             }
         }
     }
+
+    const unlessImgWs = wb.addWorksheet("UnRefByView", options);
+    unlessImgWs.cell(1, 1).string("目标路径");
+    unlessImgWs.cell(1, 2).string("图片大小");
+    unlessImgWs.cell(1, 3).string("图片");
+
+    unlessImgWs.column(1).setWidth(100);
+    unlessImgWs.column(2).setWidth(30);
+    unlessImgWs.column(3).setWidth(50);
+
+    let row = 1;
+    for (let p of UNLESS_RES_MAP)
+    {
+        ++row;
+
+        let prefix = p.endsWith(".ui") ? "pages" : "assets";
+        const fullPath = path.resolve(PRODUCT_PATH, `laya/${prefix}`, p);
+
+        if (!fs.existsSync(fullPath))
+        {
+            continue;
+        }
+
+        unlessImgWs.cell(row, 1).string(fullPath);
+        if (!noImg)
+        {
+            let ext = path.extname(fullPath);
+            let img = images(fullPath);
+            const h = img.height();
+            const w = img.width();
+            if (h > 50)
+            {
+                if (w / h < 0.1)
+                {
+                    img.resize(50, 50);
+                } else
+                {
+                    img.resize(img.width() * (50 / h));
+                }
+            }
+            SIZE_MAP[p] = Buffer.byteLength(img.toBuffer(ext), "binary");
+
+            unlessImgWs.cell(row, 2).string(`${_formatSize(+SIZE_MAP[p] || 0)}_${w}x${h}`);
+            img && unlessImgWs.addImage({
+                image: img.toBuffer(ext),
+                type: 'picture',
+                position: {
+                    type: 'oneCellAnchor',
+                    from: { col: 3, colOff: 0, row, rowOff: 0, },
+                },
+            });
+        }
+    }
+
+    fs.writeFileSync(path.join(OUTPUT_PATH, "./check_report.json"), JSON.stringify(UNLESS_RES_MAP, null, 4));
+
     wb.writeToBuffer()
         .then(buffer =>
         {
             console.log("BEGIN EXPORT");
-            fs.writeFileSync(path.join(OUTPUT_PATH, 'check_report.xlsx'), buffer);
+            fs.writeFileSync(path.join(OUTPUT_PATH, "check_report.xlsx"), buffer);
             console.log("EXPORT FINISHED");
         })
         .catch(err =>
@@ -217,8 +340,20 @@ function makeReport(target)
         ;
 }
 
+function sleep(time)
+{
+    return new Promise(resolve => setTimeout(resolve, time));
+}
 
-walkDir(PRODUCT_PATH);
-// console.log(IMG_PATH_MAP);
-console.log("开始构建报表");
-makeReport(IMG_PATH_MAP);
+async function execute()
+{
+    console.time("本次输出耗时：");
+    walkDir(PRODUCT_PATH);
+    await sleep(2000);
+    // console.log(IMG_PATH_MAP);
+    console.log("开始构建报表");
+    makeReport(RES_PATH_MAP);
+    console.timeEnd("本次输出耗时：");
+}
+
+execute();

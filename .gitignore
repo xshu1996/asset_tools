@@ -104,3 +104,4 @@ dist
 .tern-port
 
 check_report.xlsx
+check_report.json
