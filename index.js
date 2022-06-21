@@ -101,8 +101,9 @@ function walkDir(p)
                     }
                     if (!RES_PATH_MAP[resUrl])
                     {
-                        RES_PATH_MAP[resUrl] = {};
+                        RES_PATH_MAP[resUrl] = { totalUsed: 0 };
                     }
+                    RES_PATH_MAP[resUrl].totalUsed++;
                     if (RES_PATH_MAP[resUrl][fullPath])
                     {
                         RES_PATH_MAP[resUrl][fullPath]++;
@@ -132,7 +133,6 @@ function walkDir(p)
                         RES_PATH_MAP[resUrl][fullPath] = 1;
                     }
                 });
-
             }
         }
         else if (_isImage(f))
@@ -192,7 +192,13 @@ function makeReport(target)
 
     let cursor = 0;
     const bookRow = { imgRow: 1, viewRow: 1, };
-    for (let p of Object.keys(target))
+
+    let urls = Object
+        .keys(target)
+        .sort((a, b) => target[b].totalUsed - target[a].totalUsed)
+        ;
+    
+    for (let p of urls)
     {
         cursor++;
         const type = p.endsWith(".ui") ? "UIView" : "Image";
@@ -250,8 +256,8 @@ function makeReport(target)
                             img.resize(img.width() * (50 / h));
                         }
                     }
-                    SIZE_MAP[p] = Buffer.byteLength(img.toBuffer(ext), "binary");
-                    ;
+                    // SIZE_MAP[p] = Buffer.byteLength(img.toBuffer(ext), "binary");
+                    SIZE_MAP[p] = fs.statSync(fullPath).size;
                     ws.cell(row, 5).string(`${_formatSize(+SIZE_MAP[p] || 0)}_${w}x${h}`);
                 }
                 img && ws.addImage({
@@ -281,6 +287,18 @@ function makeReport(target)
     unlessImgWs.column(3).setWidth(50);
 
     let row = 1;
+    UNLESS_RES_MAP.sort((a, b) => 
+    {
+        const getFileSize = function (p)
+        {
+            let prefix = p.endsWith(".ui") ? "pages" : "assets";
+            const fullPath = path.resolve(PRODUCT_PATH, `laya/${prefix}`, p);
+            let stats = fs.statSync(fullPath);
+            return stats.size;
+        };
+
+        return getFileSize(b) - getFileSize(a);
+    });
     for (let p of UNLESS_RES_MAP)
     {
         ++row;
@@ -310,7 +328,8 @@ function makeReport(target)
                     img.resize(img.width() * (50 / h));
                 }
             }
-            SIZE_MAP[p] = Buffer.byteLength(img.toBuffer(ext), "binary");
+            
+            SIZE_MAP[p] = fs.statSync(fullPath).size;
 
             unlessImgWs.cell(row, 2).string(`${_formatSize(+SIZE_MAP[p] || 0)}_${w}x${h}`);
             img && unlessImgWs.addImage({
@@ -357,3 +376,5 @@ async function execute()
 }
 
 execute();
+// ---- bash
+// node .\index.js f:\kou_dai\MainPro -ignore f:\kou_dai\MainPro\laya\assets\res\Unpack,f:\kou_dai\MainPro\laya\assets\res\comp
