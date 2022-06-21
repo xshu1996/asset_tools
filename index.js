@@ -226,14 +226,13 @@ function makeReport(target)
             ws.cell(row, 1).string(fullPath);
             ws.cell(row, 2).string(type);
             ws.row(row).setHeight(50);
-            let usedCnt = 0;
             let usedPages = "";
             for (let k in target[p])
             {
-                usedCnt += target[p][k];
+                if (k === "totalUsed") continue;
                 usedPages += `${k.replace(path.join(PRODUCT_PATH, `laya/pages`), "")}| 使用次数：${target[p][k]}\r\n`;
             }
-            ws.cell(row, 3).number(usedCnt);
+            ws.cell(row, 3).number(target.totalUsed);
             ws.cell(row, 4).string(usedPages);
 
             if (!noImg) 
