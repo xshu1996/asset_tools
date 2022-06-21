@@ -17,6 +17,8 @@
   },
   "homepage": "https://github.com/xshu1996/asset_tools#readme",
   "dependencies": {
-    "excel4node": "^1.7.2"
+    "excel4node": "^1.7.2",
+    "images": "^3.2.4",
+    "node-images": "^2.2.1"
   }
 }
