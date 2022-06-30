@@ -22,6 +22,7 @@ const RES_PATH_MAP = Object.create(null);
 const UNLESS_RES_MAP = [];
 const MISSING_IMG_MAP = Object.create(null);
 const SIZE_MAP = Object.create(null);
+const repeatMap = []; // [base64, [path], base64, [path], ...]
 
 if (!fs.existsSync(PRODUCT_PATH)) throw "product ptah is not exists";
 // if (!checkPath) throw "missing params check path";
@@ -85,6 +86,7 @@ function walkDir(p)
         {
             const data = fs.readFileSync(fullPath, { encoding: "utf8" });
             const sf = fullPath.replace(PRODUCT_PATH, "");
+            SIZE_MAP[fullPath] = fs.statSync(fullPath).size;
             process.stdout.write("scanning..." + sf + "             \r\n");
             const skinReg = /"skin(\d{0,})":"([^,]+)"/g;
             const srcReg = /("source":)"([^,]+)"/g;
@@ -95,10 +97,6 @@ function walkDir(p)
                 data.replace(skinReg, function (match, p1, p2)
                 {
                     const resUrl = p2;
-                    if (f.endsWith("ZhuchengMapInfo.ui"))
-                    {
-                        console.log(resUrl);
-                    }
                     if (!RES_PATH_MAP[resUrl])
                     {
                         RES_PATH_MAP[resUrl] = { totalUsed: 0 };
@@ -116,14 +114,14 @@ function walkDir(p)
             }
             if (srcReg.test(data))
             {
-
                 data.replace(srcReg, function (match, p1, p2)
                 {
                     const resUrl = p2;
                     if (!RES_PATH_MAP[resUrl])
                     {
-                        RES_PATH_MAP[resUrl] = {};
+                        RES_PATH_MAP[resUrl] = { totalUsed: 0 };
                     }
+                    RES_PATH_MAP[resUrl].totalUsed++;
                     if (RES_PATH_MAP[resUrl][fullPath])
                     {
                         RES_PATH_MAP[resUrl][fullPath]++;
@@ -137,6 +135,21 @@ function walkDir(p)
         }
         else if (_isImage(f))
         {
+            const base64Str = getUrlBase64(fullPath, path.extname(f));
+            let index = repeatMap.indexOf(base64Str);
+            if (index !== -1)
+            {
+                let paths = repeatMap[index + 1];
+                if (!paths.includes(fullPath))
+                {
+                    paths.push(fullPath);
+                }
+            }
+            else
+            {
+                repeatMap.push(...[base64Str, [fullPath]]);
+            }
+            SIZE_MAP[fullPath] = fs.statSync(fullPath).size;
             UNLESS_RES_MAP.push(fullPath.replace(/\\/g, "/"));
         }
     }
@@ -174,7 +187,7 @@ function makeReport(target)
         ws.cell(1, 5).string("图片大小");
         ws.cell(1, 6).string("图片");
 
-        ws.column(1).setWidth(100);
+        ws.column(1).setWidth(70);
         ws.column(2).setWidth(16);
         ws.column(3).setWidth(10);
         ws.column(4).setWidth(100);
@@ -197,7 +210,7 @@ function makeReport(target)
         .keys(target)
         .sort((a, b) => target[b].totalUsed - target[a].totalUsed)
         ;
-    
+
     for (let p of urls)
     {
         cursor++;
@@ -232,7 +245,8 @@ function makeReport(target)
                 if (k === "totalUsed") continue;
                 usedPages += `${k.replace(path.join(PRODUCT_PATH, `laya/pages`), "")}| 使用次数：${target[p][k]}\r\n`;
             }
-            ws.cell(row, 3).number(target.totalUsed);
+
+            ws.cell(row, 3).number(target[p].totalUsed || 0);
             ws.cell(row, 4).string(usedPages);
 
             if (!noImg) 
@@ -256,8 +270,7 @@ function makeReport(target)
                         }
                     }
                     // SIZE_MAP[p] = Buffer.byteLength(img.toBuffer(ext), "binary");
-                    SIZE_MAP[p] = fs.statSync(fullPath).size;
-                    ws.cell(row, 5).string(`${_formatSize(+SIZE_MAP[p] || 0)}_${w}x${h}`);
+                    ws.cell(row, 5).string(`${_formatSize(+SIZE_MAP[fullPath] || 0)}_${w}x${h}`);
                 }
                 img && ws.addImage({
                     image: img.toBuffer(ext),
@@ -281,7 +294,7 @@ function makeReport(target)
     unlessImgWs.cell(1, 2).string("图片大小");
     unlessImgWs.cell(1, 3).string("图片");
 
-    unlessImgWs.column(1).setWidth(100);
+    unlessImgWs.column(1).setWidth(70);
     unlessImgWs.column(2).setWidth(30);
     unlessImgWs.column(3).setWidth(50);
 
@@ -327,10 +340,8 @@ function makeReport(target)
                     img.resize(img.width() * (50 / h));
                 }
             }
-            
-            SIZE_MAP[p] = fs.statSync(fullPath).size;
 
-            unlessImgWs.cell(row, 2).string(`${_formatSize(+SIZE_MAP[p] || 0)}_${w}x${h}`);
+            unlessImgWs.cell(row, 2).string(`${_formatSize(+SIZE_MAP[fullPath] || 0)}_${w}x${h}`);
             img && unlessImgWs.addImage({
                 image: img.toBuffer(ext),
                 type: 'picture',
@@ -341,6 +352,41 @@ function makeReport(target)
             });
         }
     }
+
+    const repeatRecord = wb.addWorksheet("RepeatImage", options);
+    repeatRecord.cell(1, 1).string("重复图片路径");
+    repeatRecord.column(1).setWidth(100);
+
+    repeatRecord.cell(1, 2).string("重复次数");
+    repeatRecord.column(2).setWidth(10);
+
+    repeatRecord.cell(1, 3).string("图片大小");
+    repeatRecord.column(3).setWidth(15);
+
+    // [[path]] 二维数组
+    repeatMap
+        .filter((v, i) => (i & 1) && (v.length > 1))
+        .sort((a, b) =>
+        {
+            if (a.length !== b.length)
+            {
+                return b.length - a.length;
+
+            }
+            if (SIZE_MAP[a[0]] !== SIZE_MAP[b[0]])
+            {
+                return SIZE_MAP[b[0]] - SIZE_MAP[a[0]];
+            }
+            return 0;
+        })
+        .forEach((paths, index) =>
+        {
+            let row = index + 2;
+            repeatRecord.cell(row, 1).string(paths.join("\r\n"));
+            repeatRecord.cell(row, 2).number(paths.length);
+            repeatRecord.cell(row, 3).string(_formatSize(+SIZE_MAP[paths[0]] || 0));
+        })
+        ;
 
     fs.writeFileSync(path.join(OUTPUT_PATH, "./check_report.json"), JSON.stringify(UNLESS_RES_MAP, null, 4));
 
@@ -358,6 +404,17 @@ function makeReport(target)
         ;
 }
 
+/**
+ *
+ * @param url 图片绝对路径
+ */
+function getUrlBase64(url)
+{
+    const ext = path.extname(url);
+    const data = fs.readFileSync(url);
+    return Buffer.from(data, "binary").toString("base64");
+}
+
 function sleep(time)
 {
     return new Promise(resolve => setTimeout(resolve, time));
@@ -365,13 +422,14 @@ function sleep(time)
 
 async function execute()
 {
-    console.time("本次输出耗时：");
+    console.time("本次输出耗时");
     walkDir(PRODUCT_PATH);
     await sleep(2000);
     // console.log(IMG_PATH_MAP);
     console.log("开始构建报表");
     makeReport(RES_PATH_MAP);
-    console.timeEnd("本次输出耗时：");
+    console.timeEnd("本次输出耗时");
+    // console.log(SIZE_MAP);
 }
 
 execute();
