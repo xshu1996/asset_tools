@@ -12,7 +12,7 @@ const PRODUCT_PATH = path.resolve(dirPath);
 console.log(PRODUCT_PATH);
 // 忽略检查文件夹
 const IGNORE_PATH = getIgnorePath();
-console.log(IGNORE_PATH);
+console.log("IGNORE_PATH: ", IGNORE_PATH);
 // 输出目录 默认为 ./
 const OUTPUT_PATH = getOutputPath();
 // 是否输出图片到 excel
@@ -150,7 +150,7 @@ function walkDir(p)
                 repeatMap.push(...[base64Str, [fullPath]]);
             }
             SIZE_MAP[fullPath] = fs.statSync(fullPath).size;
-            UNLESS_RES_MAP.push(fullPath.replace(/\\/g, "/"));
+            UNLESS_RES_MAP.push(fullPath);
         }
     }
 }
@@ -219,10 +219,9 @@ function makeReport(target)
         let ws = p.endsWith(".ui") ? viewWs : imgWs;
         const fullPath = path.resolve(PRODUCT_PATH, `laya/${prefix}`, p);
 
-        let url = fullPath.replace(/\\/g, "/");
-        if (UNLESS_RES_MAP.includes(url))
+        if (UNLESS_RES_MAP.includes(fullPath))
         {
-            UNLESS_RES_MAP.splice(UNLESS_RES_MAP.indexOf(url), 1);
+            UNLESS_RES_MAP.splice(UNLESS_RES_MAP.indexOf(fullPath), 1);
         }
 
         // TODO: 判断是否属于白名单
@@ -388,7 +387,7 @@ function makeReport(target)
         })
         ;
 
-    fs.writeFileSync(path.join(OUTPUT_PATH, "./check_report.json"), JSON.stringify(UNLESS_RES_MAP, null, 4));
+    fs.writeFileSync(path.join(OUTPUT_PATH, "./check_report.json"), JSON.stringify(UNLESS_RES_MAP.map(v => v.replace(/\\/g, "/")), null, 4));
 
     wb.writeToBuffer()
         .then(buffer =>
