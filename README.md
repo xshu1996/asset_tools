@@ -13,3 +13,8 @@
 - `` -out `` excel 和 json 文件输出的路径，不填默认当前脚本目录生成报表文件
 
 - example: ``node .\index.js f:\kou_dai\MainPro -ignore f:\kou_dai\MainPro\laya\assets\res\Unpack,f:\kou_dai\MainPro\laya\assets\res\comp ``
+
+# TODO List
+
+- 增加压缩图片选项
+- 增加删除ui文件里面引用不存在的资源
