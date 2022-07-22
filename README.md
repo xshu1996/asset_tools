@@ -1,5 +1,5 @@
 # asset_tools
-游戏资源检查、批量操作工具合集。
+游戏资源检查、批量操作工具合集。检索界面之间的互相引用，界面的图片、字体...（待扩展）等资源的引用情况。
 
 # 使用方式
 安装 ``nodejs version:v14.17.6``， 在脚本目录下执行 ``npm install`` 安装脚本所需依赖包，然后执行 `` node index.js {yourPorjPtah} [-ignore path1,path2] [-noimg] [-out outputPath]`` 参数具体含义与用法参照下面的说明。
