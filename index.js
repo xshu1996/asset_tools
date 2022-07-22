@@ -3,6 +3,13 @@ const path = require("path");
 const xls = require("excel4node");
 const images = require("images");
 
+const EFileType = {
+    "Unknow": "unknow",
+    "UIView": "ui_view",
+    "Image": "image",
+    "FontFile": "font_file",
+};
+
 const [, , dirPath, checkPath, ...comparePath] = process.argv.filter(t => !t.startsWith('-'));
 if (!dirPath) throw "missing set product path";
 // 默认忽略的文件夹
@@ -88,50 +95,38 @@ function walkDir(p)
             const sf = fullPath.replace(PRODUCT_PATH, "");
             SIZE_MAP[fullPath] = fs.statSync(fullPath).size;
             process.stdout.write("scanning..." + sf + "             \r\n");
+
+            const pageName = path.parse(fullPath).name;
+            // TODO: more source: 
             const skinReg = /"skin(\d{0,})":"([^,]+)"/g;
             const srcReg = /("source":)"([^,]+)"/g;
-            // TODO: source: 
-            const pageName = path.parse(fullPath).name;
-            if (skinReg.test(data))
-            {
-                data.replace(skinReg, function (match, p1, p2)
+            const fontReg = /("fontPath":)"([^,]+)"/g;
+            const regList = [skinReg, srcReg, fontReg];
+
+            regList
+                .filter(reg => reg.test(data))
+                .map(reg =>
                 {
-                    const resUrl = p2;
-                    if (!RES_PATH_MAP[resUrl])
+                    data.replace(reg, function (match, p1, p2)
                     {
-                        RES_PATH_MAP[resUrl] = { totalUsed: 0 };
-                    }
-                    RES_PATH_MAP[resUrl].totalUsed++;
-                    if (RES_PATH_MAP[resUrl][fullPath])
-                    {
-                        RES_PATH_MAP[resUrl][fullPath]++;
-                    }
-                    else
-                    {
-                        RES_PATH_MAP[resUrl][fullPath] = 1;
-                    }
-                });
-            }
-            if (srcReg.test(data))
-            {
-                data.replace(srcReg, function (match, p1, p2)
-                {
-                    const resUrl = p2;
-                    if (!RES_PATH_MAP[resUrl])
-                    {
-                        RES_PATH_MAP[resUrl] = { totalUsed: 0 };
-                    }
-                    RES_PATH_MAP[resUrl].totalUsed++;
-                    if (RES_PATH_MAP[resUrl][fullPath])
-                    {
-                        RES_PATH_MAP[resUrl][fullPath]++;
-                    }
-                    else
-                    {
-                        RES_PATH_MAP[resUrl][fullPath] = 1;
-                    }
-                });
-            }
+                        const resUrl = p2;
+                        if (!RES_PATH_MAP[resUrl])
+                        {
+                            RES_PATH_MAP[resUrl] = { totalUsed: 0 };
+                        }
+                        RES_PATH_MAP[resUrl].totalUsed++;
+                        if (RES_PATH_MAP[resUrl][fullPath])
+                        {
+                            RES_PATH_MAP[resUrl][fullPath]++;
+                        }
+                        else
+                        {
+                            RES_PATH_MAP[resUrl][fullPath] = 1;
+                        }
+                    });
+                    return reg;
+                })
+                ;
         }
         else if (_isImage(f))
         {
@@ -149,6 +144,11 @@ function walkDir(p)
             {
                 repeatMap.push(...[base64Str, [fullPath]]);
             }
+            SIZE_MAP[fullPath] = fs.statSync(fullPath).size;
+            UNLESS_RES_MAP.push(fullPath);
+        }
+        else if (f.endsWith(".fnt"))
+        {
             SIZE_MAP[fullPath] = fs.statSync(fullPath).size;
             UNLESS_RES_MAP.push(fullPath);
         }
@@ -184,14 +184,14 @@ function makeReport(target)
         ws.cell(1, 2).string("目标类型");
         ws.cell(1, 3).string("使用次数");
         ws.cell(1, 4).string("使用的界面，包含次数");
-        ws.cell(1, 5).string("图片大小");
-        ws.cell(1, 6).string("图片");
+        ws.cell(1, 5).string("文件大小");
+        ws.cell(1, 6).string("文件");
 
         ws.column(1).setWidth(70);
         ws.column(2).setWidth(16);
         ws.column(3).setWidth(10);
         ws.column(4).setWidth(100);
-        ws.column(5).setWidth(30);
+        ws.column(5).setWidth(16);
         ws.column(6).setWidth(50);
 
         return ws;
@@ -214,7 +214,7 @@ function makeReport(target)
     for (let p of urls)
     {
         cursor++;
-        const type = p.endsWith(".ui") ? "UIView" : "Image";
+        const type = getFileType(p);
         let prefix = p.endsWith(".ui") ? "pages" : "assets";
         let ws = p.endsWith(".ui") ? viewWs : imgWs;
         const fullPath = path.resolve(PRODUCT_PATH, `laya/${prefix}`, p);
@@ -247,12 +247,12 @@ function makeReport(target)
 
             ws.cell(row, 3).number(target[p].totalUsed || 0);
             ws.cell(row, 4).string(usedPages);
-
+            let str = `${_formatSize(+getFileSize(fullPath))}`;
             if (!noImg) 
             {
                 let img;
                 let ext;
-                if (type === "Image")
+                if (type === EFileType.Image)
                 {
                     img = images(fullPath);
                     ext = path.extname(fullPath);
@@ -260,37 +260,26 @@ function makeReport(target)
                     const w = img.width();
                     if (h > 50)
                     {
-                        if (w / h < 0.1)
-                        {
-                            img.resize(50, 50);
-                        } else
-                        {
-                            img.resize(img.width() * (50 / h));
-                        }
+                        (w / h < 0.1) ? img.resize(50, 50) : img.resize(img.width() * (50 / h));
                     }
-                    // SIZE_MAP[p] = Buffer.byteLength(img.toBuffer(ext), "binary");
-                    ws.cell(row, 5).string(`${_formatSize(+SIZE_MAP[fullPath] || 0)}_${w}x${h}`);
+                    str += `_${w}x${h}`;
                 }
                 img && ws.addImage({
                     image: img.toBuffer(ext),
                     type: 'picture',
                     position: {
                         type: 'oneCellAnchor',
-                        from: {
-                            col: 6,
-                            colOff: 0,
-                            row,
-                            rowOff: 0,
-                        },
-                    },
+                        from: { col: 6, colOff: 0, row, rowOff: 0 }
+                    }
                 });
             }
+            ws.cell(row, 5).string(str);
         }
     }
 
     const unlessImgWs = wb.addWorksheet("UnRefByView", options);
     unlessImgWs.cell(1, 1).string("目标路径");
-    unlessImgWs.cell(1, 2).string("图片大小");
+    unlessImgWs.cell(1, 2).string("文件大小");
     unlessImgWs.cell(1, 3).string("图片");
 
     unlessImgWs.column(1).setWidth(70);
@@ -323,7 +312,7 @@ function makeReport(target)
         }
 
         unlessImgWs.cell(row, 1).string(fullPath);
-        if (!noImg)
+        if (!noImg && getFileType(p) === EFileType.Image)
         {
             let ext = path.extname(fullPath);
             let img = images(fullPath);
@@ -340,7 +329,7 @@ function makeReport(target)
                 }
             }
 
-            unlessImgWs.cell(row, 2).string(`${_formatSize(+SIZE_MAP[fullPath] || 0)}_${w}x${h}`);
+            unlessImgWs.cell(row, 2).string(`${_formatSize(+getFileSize(fullPath))}_${w}x${h}`);
             img && unlessImgWs.addImage({
                 image: img.toBuffer(ext),
                 type: 'picture',
@@ -349,6 +338,10 @@ function makeReport(target)
                     from: { col: 3, colOff: 0, row, rowOff: 0, },
                 },
             });
+        }
+        else
+        {
+            unlessImgWs.cell(row, 2).string(`${_formatSize(+getFileSize(fullPath))}`);
         }
     }
 
@@ -372,9 +365,9 @@ function makeReport(target)
                 return b.length - a.length;
 
             }
-            if (SIZE_MAP[a[0]] !== SIZE_MAP[b[0]])
+            if (getFileSize(a[0]) !== getFileSize(b[0]))
             {
-                return SIZE_MAP[b[0]] - SIZE_MAP[a[0]];
+                return getFileSize(b[0]) - getFileSize(a[0]);
             }
             return 0;
         })
@@ -383,7 +376,7 @@ function makeReport(target)
             let row = index + 2;
             repeatRecord.cell(row, 1).string(paths.join("\r\n"));
             repeatRecord.cell(row, 2).number(paths.length);
-            repeatRecord.cell(row, 3).string(_formatSize(+SIZE_MAP[paths[0]] || 0));
+            repeatRecord.cell(row, 3).string(_formatSize(+getFileSize(paths[0])));
         })
         ;
 
@@ -405,13 +398,51 @@ function makeReport(target)
 
 /**
  *
- * @param url 图片绝对路径
+ * @param url 文件绝对路径
  */
 function getUrlBase64(url)
 {
     const ext = path.extname(url);
     const data = fs.readFileSync(url);
     return Buffer.from(data, "binary").toString("base64");
+}
+
+function getFileType(url)
+{
+    let ext = path.extname(url);
+    let fileType = EFileType.Unknow;
+    switch (ext)
+    {
+        case ".ui":
+            fileType = EFileType.UIView;
+            break;
+        case ".fnt":
+            fileType = EFileType.FontFile;
+            break;
+        case ".png":
+        case ".jpg":
+        case ".jpeg":
+        case ".bmp":
+            fileType = EFileType.Image;
+            break;
+    }
+    return fileType;
+}
+
+function getFileSize(url)
+{
+    if (SIZE_MAP[url]) return SIZE_MAP[url];
+    try 
+    {
+        let size = fs.statSync(url).size;
+        SIZE_MAP[url] = size;
+        return size;
+    }
+    catch(err)
+    {
+        console.error(err);
+        return 0;
+    }
 }
 
 function sleep(time)
@@ -430,7 +461,4 @@ async function execute()
     console.timeEnd("本次输出耗时");
     // console.log(SIZE_MAP);
 }
-
 execute();
-// ---- bash
-// node .\index.js f:\kou_dai\MainPro -ignore f:\kou_dai\MainPro\laya\assets\res\Unpack,f:\kou_dai\MainPro\laya\assets\res\comp
