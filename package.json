@@ -19,5 +19,19 @@
   "dependencies": {
     "excel4node": "^1.7.2",
     "node-images": "^2.2.1"
+  },
+  "bin": "index.js",
+  "pkg": {
+    "scripts": [
+      "index.js"
+    ],
+    "targets": [
+      "node14-macos-x64",
+      "node14-win-x64"
+    ],
+    "assets": [
+      "node_modules/**/*"
+    ],
+    "outputPath": "./build"
   }
 }
