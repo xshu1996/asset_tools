@@ -12,7 +12,9 @@
 - `` -noimg `` 是否输出图片到 excel 文件，如果输出图片而且图片过多，打开 excel 会卡顿
 - `` -out `` excel 和 json 文件输出的路径，不填默认当前脚本目录生成报表文件
 
-- example: ``node .\index.js f:\kou_dai\MainPro -ignore f:\kou_dai\MainPro\laya\assets\res\Unpack,f:\kou_dai\MainPro\laya\assets\res\comp ``
+- Example:
+  + 运行 ``index.js`` 脚本：<br>``node .\index.js f:\kou_dai\MainPro -ignore f:\kou_dai\MainPro\laya\assets\res\Unpack,f:\kou_dai\MainPro\laya\assets\res\comp ``
+  + 运行 ``exe`` 文件： <br>``f:\kou_dai\MainPro -ignore f:\kou_dai\MainPro\laya\assets\res\Unpack,f:\kou_dai\MainPro\laya\assets\res\comp ``
 
 # TODO List
 

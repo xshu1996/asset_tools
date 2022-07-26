@@ -7,7 +7,6 @@ const { exit } = require("process");
 __main__();
 async function __main__()
 {
-
     const EFileType = {
         "Unknow": "unknow",
         "UIView": "ui_view",
@@ -30,21 +29,23 @@ async function __main__()
         });
     }
 
-    let isExe = process.argv0.indexOf("node") === -1;
+    // 是否是可执行文件环境
+    const isExe = process.argv0.indexOf("node") === -1;
     if (isExe)
     {
         let param = await getInput("请输入参数:");
-        console.log(param)
+        // console.log(param);
         try {
             process.argv = param.split(" ");
             process.argv.unshift(...["_", "_"]);
-            console.log(process.argv)
+            // console.log(process.argv);
         }
         catch (err)
         {
-            console.log(err)
+            console.log(err, param);
         }
     }
+    // 解析输入参数
     const [, , dirPath, checkPath, ...comparePath] = process.argv.filter(t => !t.startsWith('-'));
     if (!dirPath) throw "missing set product path";
     // 默认忽略的文件夹
@@ -52,6 +53,9 @@ async function __main__()
     // 路径需要到 ..project_name
     const PRODUCT_PATH = path.resolve(dirPath);
     console.log(PRODUCT_PATH);
+    if (!fs.existsSync(PRODUCT_PATH)) throw "product ptah is not exists";
+    // if (!checkPath) throw "missing params check path";
+
     // 忽略检查文件夹
     const IGNORE_PATH = getIgnorePath();
     console.log("IGNORE_PATH: ", IGNORE_PATH);
@@ -60,15 +64,14 @@ async function __main__()
     // 是否输出图片到 excel
     const noImg = process.argv.indexOf("-noImg") > -1;
 
+    // Map 记录资源使用情况
     const RES_PATH_MAP = Object.create(null);
     const UNLESS_RES_MAP = [];
     const MISSING_IMG_MAP = Object.create(null);
     const SIZE_MAP = Object.create(null);
     const repeatMap = []; // [base64, [path], base64, [path], ...]
 
-    if (!fs.existsSync(PRODUCT_PATH)) throw "product ptah is not exists";
-    // if (!checkPath) throw "missing params check path";
-
+    // 获取忽视检索路径
     function getIgnorePath()
     {
         const ignoreIdx = process.argv.findIndex(_ => _ === "-ignore");
@@ -89,7 +92,7 @@ async function __main__()
         }
         return {};
     }
-
+    // 获取输出路径，保存报表
     function getOutputPath()
     {
         const outputIdx = process.argv.findIndex(_ => _ === '-out');
@@ -102,6 +105,7 @@ async function __main__()
         return outPath;
     }
 
+    // 遍历文件
     function walkDir(p)
     {
         for (const f of fs.readdirSync(p))
@@ -190,6 +194,7 @@ async function __main__()
         }
     }
 
+    // 格式化输出大小
     function _formatSize(size) 
     {
         let sign = Math.sign(size);
@@ -197,11 +202,13 @@ async function __main__()
         return `${size > 1024 ? sign * (size / 1024).toFixed(2) + "KB" : sign * size + "B"}`;
     }
 
+    // 判断是否是图片
     function _isImage(file)
     {
         return file.endsWith(".png") || file.endsWith(".jpg") || file.endsWith(".jpeg") || file.endsWith(".bmp");
     }
 
+    // 构建报表
     function makeReport(target)
     {
         const wb = new xls.Workbook();
@@ -437,11 +444,12 @@ async function __main__()
      */
     function getUrlBase64(url)
     {
-        const ext = path.extname(url);
+        // const ext = path.extname(url);
         const data = fs.readFileSync(url);
         return Buffer.from(data, "binary").toString("base64");
     }
 
+    // 获取文件类型
     function getFileType(url)
     {
         let ext = path.extname(url);
@@ -464,6 +472,7 @@ async function __main__()
         return fileType;
     }
 
+    // 获取文件大小
     function getFileSize(url)
     {
         if (SIZE_MAP[url]) return SIZE_MAP[url];
@@ -485,6 +494,7 @@ async function __main__()
         return new Promise(resolve => setTimeout(resolve, time));
     }
 
+    // 开始执行
     async function execute()
     {
         console.time("本次输出耗时");
